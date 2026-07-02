@@ -33,11 +33,12 @@ const WRITE_ACTIONS = new Set([
   "updateSettings", "cleanupOldBookings",
 ]);
 
-export function getAppsScriptUrl(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(APPS_SCRIPT_URL_KEY);
-}
+const APPS_SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbxZwTQsVkbWjN9wXaDDtd1KzNgD0hcUiScEbR2SczFEBi5M85Xhx35W2Hi5lGNph_o5Sg/exec";
 
+export function getAppsScriptUrl(): string | null {
+  return APPS_SCRIPT_URL;
+}
 export function setAppsScriptUrl(url: string) {
   window.localStorage.setItem(APPS_SCRIPT_URL_KEY, url);
   clearApiCache();
