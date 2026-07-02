@@ -14,11 +14,13 @@ import { Route as AdminRouteImport } from './routes/_admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminAdminIndexRouteImport } from './routes/_admin/admin.index'
 import { Route as AdminAdminTiersRouteImport } from './routes/_admin/admin.tiers'
+import { Route as AdminAdminShiftsRouteImport } from './routes/_admin/admin.shifts'
 import { Route as AdminAdminSettingsRouteImport } from './routes/_admin/admin.settings'
 import { Route as AdminAdminRevenueRouteImport } from './routes/_admin/admin.revenue'
 import { Route as AdminAdminPcsRouteImport } from './routes/_admin/admin.pcs'
 import { Route as AdminAdminMemberTopupRouteImport } from './routes/_admin/admin.member-topup'
 import { Route as AdminAdminExpensesRouteImport } from './routes/_admin/admin.expenses'
+import { Route as AdminAdminCashiersRouteImport } from './routes/_admin/admin.cashiers'
 import { Route as AdminAdminAvailabilityRouteImport } from './routes/_admin/admin.availability'
 import { Route as AdminAdminBookingsIndexRouteImport } from './routes/_admin/admin.bookings.index'
 import { Route as AdminAdminBookingsNewRouteImport } from './routes/_admin/admin.bookings.new'
@@ -47,6 +49,11 @@ const AdminAdminTiersRoute = AdminAdminTiersRouteImport.update({
   path: '/admin/tiers',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAdminShiftsRoute = AdminAdminShiftsRouteImport.update({
+  id: '/admin/shifts',
+  path: '/admin/shifts',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAdminSettingsRoute = AdminAdminSettingsRouteImport.update({
   id: '/admin/settings',
   path: '/admin/settings',
@@ -72,6 +79,11 @@ const AdminAdminExpensesRoute = AdminAdminExpensesRouteImport.update({
   path: '/admin/expenses',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAdminCashiersRoute = AdminAdminCashiersRouteImport.update({
+  id: '/admin/cashiers',
+  path: '/admin/cashiers',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAdminAvailabilityRoute = AdminAdminAvailabilityRouteImport.update({
   id: '/admin/availability',
   path: '/admin/availability',
@@ -92,11 +104,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/unlock': typeof UnlockRoute
   '/admin/availability': typeof AdminAdminAvailabilityRoute
+  '/admin/cashiers': typeof AdminAdminCashiersRoute
   '/admin/expenses': typeof AdminAdminExpensesRoute
   '/admin/member-topup': typeof AdminAdminMemberTopupRoute
   '/admin/pcs': typeof AdminAdminPcsRoute
   '/admin/revenue': typeof AdminAdminRevenueRoute
   '/admin/settings': typeof AdminAdminSettingsRoute
+  '/admin/shifts': typeof AdminAdminShiftsRoute
   '/admin/tiers': typeof AdminAdminTiersRoute
   '/admin/': typeof AdminAdminIndexRoute
   '/admin/bookings/new': typeof AdminAdminBookingsNewRoute
@@ -106,11 +120,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/unlock': typeof UnlockRoute
   '/admin/availability': typeof AdminAdminAvailabilityRoute
+  '/admin/cashiers': typeof AdminAdminCashiersRoute
   '/admin/expenses': typeof AdminAdminExpensesRoute
   '/admin/member-topup': typeof AdminAdminMemberTopupRoute
   '/admin/pcs': typeof AdminAdminPcsRoute
   '/admin/revenue': typeof AdminAdminRevenueRoute
   '/admin/settings': typeof AdminAdminSettingsRoute
+  '/admin/shifts': typeof AdminAdminShiftsRoute
   '/admin/tiers': typeof AdminAdminTiersRoute
   '/admin': typeof AdminAdminIndexRoute
   '/admin/bookings/new': typeof AdminAdminBookingsNewRoute
@@ -122,11 +138,13 @@ export interface FileRoutesById {
   '/_admin': typeof AdminRouteWithChildren
   '/unlock': typeof UnlockRoute
   '/_admin/admin/availability': typeof AdminAdminAvailabilityRoute
+  '/_admin/admin/cashiers': typeof AdminAdminCashiersRoute
   '/_admin/admin/expenses': typeof AdminAdminExpensesRoute
   '/_admin/admin/member-topup': typeof AdminAdminMemberTopupRoute
   '/_admin/admin/pcs': typeof AdminAdminPcsRoute
   '/_admin/admin/revenue': typeof AdminAdminRevenueRoute
   '/_admin/admin/settings': typeof AdminAdminSettingsRoute
+  '/_admin/admin/shifts': typeof AdminAdminShiftsRoute
   '/_admin/admin/tiers': typeof AdminAdminTiersRoute
   '/_admin/admin/': typeof AdminAdminIndexRoute
   '/_admin/admin/bookings/new': typeof AdminAdminBookingsNewRoute
@@ -138,11 +156,13 @@ export interface FileRouteTypes {
     | '/'
     | '/unlock'
     | '/admin/availability'
+    | '/admin/cashiers'
     | '/admin/expenses'
     | '/admin/member-topup'
     | '/admin/pcs'
     | '/admin/revenue'
     | '/admin/settings'
+    | '/admin/shifts'
     | '/admin/tiers'
     | '/admin/'
     | '/admin/bookings/new'
@@ -152,11 +172,13 @@ export interface FileRouteTypes {
     | '/'
     | '/unlock'
     | '/admin/availability'
+    | '/admin/cashiers'
     | '/admin/expenses'
     | '/admin/member-topup'
     | '/admin/pcs'
     | '/admin/revenue'
     | '/admin/settings'
+    | '/admin/shifts'
     | '/admin/tiers'
     | '/admin'
     | '/admin/bookings/new'
@@ -167,11 +189,13 @@ export interface FileRouteTypes {
     | '/_admin'
     | '/unlock'
     | '/_admin/admin/availability'
+    | '/_admin/admin/cashiers'
     | '/_admin/admin/expenses'
     | '/_admin/admin/member-topup'
     | '/_admin/admin/pcs'
     | '/_admin/admin/revenue'
     | '/_admin/admin/settings'
+    | '/_admin/admin/shifts'
     | '/_admin/admin/tiers'
     | '/_admin/admin/'
     | '/_admin/admin/bookings/new'
@@ -221,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminTiersRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_admin/admin/shifts': {
+      id: '/_admin/admin/shifts'
+      path: '/admin/shifts'
+      fullPath: '/admin/shifts'
+      preLoaderRoute: typeof AdminAdminShiftsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/_admin/admin/settings': {
       id: '/_admin/admin/settings'
       path: '/admin/settings'
@@ -256,6 +287,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminExpensesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_admin/admin/cashiers': {
+      id: '/_admin/admin/cashiers'
+      path: '/admin/cashiers'
+      fullPath: '/admin/cashiers'
+      preLoaderRoute: typeof AdminAdminCashiersRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/_admin/admin/availability': {
       id: '/_admin/admin/availability'
       path: '/admin/availability'
@@ -282,11 +320,13 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAdminAvailabilityRoute: typeof AdminAdminAvailabilityRoute
+  AdminAdminCashiersRoute: typeof AdminAdminCashiersRoute
   AdminAdminExpensesRoute: typeof AdminAdminExpensesRoute
   AdminAdminMemberTopupRoute: typeof AdminAdminMemberTopupRoute
   AdminAdminPcsRoute: typeof AdminAdminPcsRoute
   AdminAdminRevenueRoute: typeof AdminAdminRevenueRoute
   AdminAdminSettingsRoute: typeof AdminAdminSettingsRoute
+  AdminAdminShiftsRoute: typeof AdminAdminShiftsRoute
   AdminAdminTiersRoute: typeof AdminAdminTiersRoute
   AdminAdminIndexRoute: typeof AdminAdminIndexRoute
   AdminAdminBookingsNewRoute: typeof AdminAdminBookingsNewRoute
@@ -295,11 +335,13 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAdminAvailabilityRoute: AdminAdminAvailabilityRoute,
+  AdminAdminCashiersRoute: AdminAdminCashiersRoute,
   AdminAdminExpensesRoute: AdminAdminExpensesRoute,
   AdminAdminMemberTopupRoute: AdminAdminMemberTopupRoute,
   AdminAdminPcsRoute: AdminAdminPcsRoute,
   AdminAdminRevenueRoute: AdminAdminRevenueRoute,
   AdminAdminSettingsRoute: AdminAdminSettingsRoute,
+  AdminAdminShiftsRoute: AdminAdminShiftsRoute,
   AdminAdminTiersRoute: AdminAdminTiersRoute,
   AdminAdminIndexRoute: AdminAdminIndexRoute,
   AdminAdminBookingsNewRoute: AdminAdminBookingsNewRoute,

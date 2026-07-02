@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { callApi, getAppsScriptUrl, getLastApiResponse, type DashboardSummary, type AvailabilityResult, type Tier, type SlotSuggestion } from "@/lib/api";
+import { callApi, getAppsScriptUrl, getLastApiResponse, type DashboardSummary, type AvailabilityResult, type Tier, type SlotSuggestion, type ShiftSummary } from "@/lib/api";
 import { getSessionAccess, type UserRole } from "@/lib/gate.functions";
 import { PageHeader, StatCard, Card, Field, inputCls, Btn, Badge, ErrorBanner } from "@/components/ui-kit";
 
@@ -15,18 +15,25 @@ type DashboardData = {
   tiers: Tier[];
 };
 
+type SessionInfo = {
+  role?: UserRole | null;
+  cashier_name?: string;
+  shift_id?: string;
+  shift_started_at?: string;
+};
+
 function money(currency: string, amount?: number) {
   return `${currency} ${Number(amount || 0).toLocaleString()}`;
 }
 
 function DashboardPage() {
   const [apiReady, setApiReady] = useState(false);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const getAccess = useServerFn(getSessionAccess);
 
   useEffect(() => {
     setApiReady(!!getAppsScriptUrl());
-    getAccess().then((r) => setRole(r.role as UserRole | null)).catch(() => setRole(null));
+    getAccess().then((r) => setSession(r as SessionInfo)).catch(() => setSession(null));
   }, [getAccess]);
 
   const dashboard = useQuery({
@@ -35,6 +42,15 @@ function DashboardPage() {
     initialData: () => getLastApiResponse<{ success: true; data: DashboardData }>("getDashboardData"),
     enabled: apiReady,
     staleTime: 30_000,
+  });
+
+  const shiftSummary = useQuery({
+    queryKey: ["myShiftSummary", session?.shift_id],
+    queryFn: () => callApi<{ success: true; data: ShiftSummary | null }>("getMyShiftSummary", { shift_id: session?.shift_id }),
+    initialData: () => getLastApiResponse<{ success: true; data: ShiftSummary | null }>("getMyShiftSummary", { shift_id: session?.shift_id }),
+    enabled: apiReady && session?.role === "cashier" && !!session?.shift_id,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
   });
 
   const s = dashboard.data?.data.summary;
@@ -59,7 +75,10 @@ function DashboardPage() {
         <StatCard label="Today's Bookings" value={s?.todays_bookings ?? "—"} />
         <StatCard label="Pending" value={s?.pending_bookings ?? "—"} />
       </div>
-      {role === "admin" && (
+      {session?.role === "cashier" && shiftSummary.data?.data && (
+        <CashierShiftCard shift={shiftSummary.data.data} />
+      )}
+      {session?.role === "admin" && (
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           <StatCard label="Earnings Today" value={s ? money(currency, s.todays_revenue) : "—"} hint="Bookings + member topups" />
           <StatCard label="Cash Today" value={s ? money(currency, s.todays_cash) : "—"} />
@@ -71,6 +90,30 @@ function DashboardPage() {
       )}
       <QuickCheck tiers={tiers} />
     </div>
+  );
+}
+
+function CashierShiftCard({ shift }: { shift: ShiftSummary }) {
+  const money = (amount?: number) => `Rs ${Number(amount || 0).toLocaleString()}`;
+  return (
+    <Card className="mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold">My Active Shift</h2>
+          <p className="text-sm text-muted-foreground">Clocked in as {shift.cashier_name} · {shift.shift_id}</p>
+        </div>
+        <Badge tone={shift.status === "Active" ? "success" : "default"}>{shift.status}</Badge>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <StatCard label="Bookings Created" value={shift.bookings_created} />
+        <StatCard label="Completed" value={shift.completed_bookings} />
+        <StatCard label="Shift Revenue" value={money(shift.total_revenue)} hint="Bookings + topups" />
+        <StatCard label="Cash Collected" value={money(shift.cash_collected)} />
+        <StatCard label="Expenses" value={money(shift.expenses_total)} />
+        <StatCard label="Expected Cash" value={money(shift.expected_cash)} hint="Cash - cash expenses" />
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">When admin checks the drawer, expected cash should roughly match the cash physically available for this shift.</p>
+    </Card>
   );
 }
 

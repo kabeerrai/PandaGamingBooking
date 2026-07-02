@@ -11,6 +11,7 @@ export const Route = createFileRoute("/_admin/admin/expenses")({
 });
 
 const CATEGORIES = ["Miscellaneous", "Fixed", "Repairs"] as const;
+const PAYMENT_METHODS = ["Cash", "JazzCash", "Easypaisa", "Bank"] as const;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -18,7 +19,7 @@ function today() {
 
 function ExpensesPage() {
   const qc = useQueryClient();
-  const [form, setForm] = useState({ expense_date: today(), category: "Miscellaneous", amount: 0, notes: "" });
+  const [form, setForm] = useState({ expense_date: today(), category: "Miscellaneous", amount: 0, payment_method: "Cash", notes: "" });
   const [filters, setFilters] = useState({ month: today().slice(0, 7), category: "" });
 
   const expenses = useQuery({
@@ -32,7 +33,7 @@ function ExpensesPage() {
     mutationFn: () => callApi("addExpense", form),
     onSuccess: () => {
       toast.success("Expense saved");
-      setForm({ expense_date: today(), category: "Miscellaneous", amount: 0, notes: "" });
+      setForm({ expense_date: today(), category: "Miscellaneous", amount: 0, payment_method: "Cash", notes: "" });
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["dashboardData"] });
     },
@@ -71,6 +72,11 @@ function ExpensesPage() {
               </select>
             </Field>
             <Field label="Amount"><input type="number" min={0} className={inputCls} value={form.amount} onChange={(e) => setForm({ ...form, amount: +e.target.value })} /></Field>
+            <Field label="Payment method">
+              <select className={inputCls} value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Field>
             <Field label="Notes"><input className={inputCls} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional details" /></Field>
           </div>
           <ErrorBanner error={add.error} />
@@ -80,7 +86,7 @@ function ExpensesPage() {
         <Card>
           <div className="text-xs uppercase text-muted-foreground">Filtered expenses</div>
           <div className="text-3xl font-bold neon-text mt-1">Rs {total.toLocaleString()}</div>
-          <p className="text-sm text-muted-foreground mt-2">Only admin accounts can open this page.</p>
+          <p className="text-sm text-muted-foreground mt-2">Cash expenses reduce expected cash in shift reports.</p>
         </Card>
       </div>
 
@@ -105,6 +111,7 @@ function ExpensesPage() {
                 <th className="p-3">Date</th>
                 <th className="p-3">Category</th>
                 <th className="p-3">Notes</th>
+                <th className="p-3">Method</th>
                 <th className="p-3">Amount</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
@@ -115,6 +122,7 @@ function ExpensesPage() {
                   <td className="p-3">{e.expense_date}</td>
                   <td className="p-3 font-medium">{e.category}</td>
                   <td className="p-3 text-muted-foreground">{e.notes || "—"}</td>
+                  <td className="p-3">{e.payment_method || "Cash"}</td>
                   <td className="p-3 neon-text font-semibold">Rs {Number(e.amount || 0).toLocaleString()}</td>
                   <td className="p-3 text-right"><Btn variant="ghost" onClick={() => { if (confirm("Delete this expense?")) del.mutate(e.expense_id); }}><Trash2 className="size-3" /></Btn></td>
                 </tr>

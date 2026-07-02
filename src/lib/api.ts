@@ -1,4 +1,5 @@
 // src/lib/api.ts
+import { getPublicSessionMeta } from "./session-meta";
 export const APPS_SCRIPT_URL_KEY = "panda:appsScriptUrl";
 
 const API_CACHE_PREFIX = "panda:api-cache:";
@@ -17,6 +18,9 @@ const READ_CACHE_TTL_MS: Record<string, number> = {
   getPayments: 30_000,
   getRevenueSummary: 30_000,
   getRevenueAnalytics: 60_000,
+  getCashiers: 60_000,
+  getMyShiftSummary: 10_000,
+  getShiftReports: 30_000,
 };
 
 const WRITE_ACTIONS = new Set([
@@ -25,6 +29,7 @@ const WRITE_ACTIONS = new Set([
   "addBooking", "updateBooking", "cancelBooking", "deleteBooking", "completeBooking",
   "addMemberTopup", "deleteMemberTopup",
   "addExpense", "deleteExpense",
+  "addCashier", "updateCashier", "deleteCashier", "closeShift",
   "updateSettings", "cleanupOldBookings",
 ]);
 
@@ -130,10 +135,14 @@ export async function callApi<T = any>(action: string, payload: any = {}): Promi
     );
   }
 
+  const sessionMeta = getPublicSessionMeta();
+  const requestPayload = { ...(payload || {}) };
+  if (sessionMeta) requestPayload.__session = sessionMeta;
+
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, payload }),
+    body: JSON.stringify({ action, payload: requestPayload }),
     redirect: "follow",
   });
   if (!res.ok) throw new ApiError(`HTTP ${res.status}`);
@@ -186,6 +195,9 @@ export type MemberTopup = {
   notes?: string;
   created_at?: string;
   updated_at?: string;
+  cashier_id?: string;
+  cashier_name?: string;
+  shift_id?: string;
 };
 
 export type Expense = {
@@ -194,8 +206,12 @@ export type Expense = {
   category: "Miscellaneous" | "Fixed" | "Repairs" | string;
   amount: number;
   notes?: string;
+  payment_method?: "Cash" | "JazzCash" | "Easypaisa" | "Bank" | string;
   created_at?: string;
   updated_at?: string;
+  cashier_id?: string;
+  cashier_name?: string;
+  shift_id?: string;
 };
 
 export type Booking = {
@@ -224,6 +240,9 @@ export type Booking = {
   payment_status?: "" | "Paid" | "Partial" | "Overpaid" | string;
   completed_at?: string;
   keep_permanent?: "Yes" | "No" | string;
+  cashier_id?: string;
+  cashier_name?: string;
+  shift_id?: string;
 };
 
 export type SlotSuggestion = {
@@ -248,6 +267,36 @@ export type AvailabilityResult = {
   can_book: boolean;
   message?: string;
   suggestions?: SlotSuggestion[];
+};
+
+export type Cashier = {
+  cashier_id: string;
+  cashier_name: string;
+  username: string;
+  password: string;
+  status: "Active" | "Inactive" | string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ShiftSummary = {
+  shift_id: string;
+  cashier_id: string;
+  cashier_name: string;
+  clock_in_at: string;
+  clock_out_at?: string;
+  status: "Active" | "Closed" | string;
+  bookings_created: number;
+  completed_bookings: number;
+  booking_revenue: number;
+  topups_total: number;
+  expenses_total: number;
+  total_revenue: number;
+  net_revenue: number;
+  cash_collected: number;
+  online_collected: number;
+  cash_expenses: number;
+  expected_cash: number;
 };
 
 export type RevenueAnalytics = {

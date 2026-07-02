@@ -23,6 +23,8 @@ const SHEETS = {
   CUSTOMERS: 'Customers',
   MEMBER_TOPUPS: 'MemberTopups',
   EXPENSES: 'Expenses',
+  CASHIERS: 'Cashiers',
+  SHIFTS: 'CashierShifts',
 };
 
 const HEADERS = {
@@ -32,18 +34,20 @@ const HEADERS = {
     'booking_id','customer_name','phone_number','tier_id','booking_date','start_time','end_time',
     'duration_minutes','pcs_required','assigned_pc_ids','status','notes','total_price','created_at','updated_at',
     'booking_type','discount_amount','amount_due','cash_collected','online_method','online_collected',
-    'total_collected','payment_status','completed_at','keep_permanent'
+    'total_collected','payment_status','completed_at','keep_permanent','cashier_id','cashier_name','shift_id'
   ],
   Settings: ['setting_name','setting_value'],
   Payments: [
     'payment_id','booking_id','customer_name','phone_number','tier_id','booking_date','payment_date','completed_at',
     'booking_type','gross_total','discount_amount','amount_due','cash_collected','online_method','online_collected',
     'total_collected','payment_status','notes','created_at','updated_at',
-    'assigned_pc_ids','pc_names','tier_name','duration_minutes','pcs_required'
+    'assigned_pc_ids','pc_names','tier_name','duration_minutes','pcs_required','cashier_id','cashier_name','shift_id'
   ],
   Customers: ['customer_id','customer_name','phone_number','total_bookings','last_booking_at','created_at','updated_at'],
-  MemberTopups: ['topup_id','member_name','phone_number','amount','topup_date','payment_method','notes','created_at','updated_at'],
-  Expenses: ['expense_id','expense_date','category','amount','notes','created_at','updated_at'],
+  MemberTopups: ['topup_id','member_name','phone_number','amount','topup_date','payment_method','notes','created_at','updated_at','cashier_id','cashier_name','shift_id'],
+  Expenses: ['expense_id','expense_date','category','amount','notes','created_at','updated_at','payment_method','cashier_id','cashier_name','shift_id'],
+  Cashiers: ['cashier_id','cashier_name','username','password','status','created_at','updated_at'],
+  CashierShifts: ['shift_id','cashier_id','cashier_name','clock_in_at','clock_out_at','status','created_at','updated_at'],
 };
 
 const DEFAULT_SETTINGS = [
@@ -73,6 +77,8 @@ const CACHE_KEYS = {
   BOOKINGS: 'pgz_bookings_v7',
   BOOTSTRAP: 'pgz_bootstrap_v7',
   CLEANUP: 'pgz_cleanup_v6',
+  CASHIERS: 'pgz_cashiers_v1',
+  SHIFTS: 'pgz_shifts_v1',
 };
 function cacheGet(key) {
   try {
@@ -104,6 +110,15 @@ function runOnce() {
   DEFAULT_SETTINGS.forEach(r => {
     if (!existing[r[0]]) settings.appendRow(r);
   });
+
+  // Create a starter cashier account once so the old cashier password still works
+  // after you move cashier management into Google Sheets. You can change/delete
+  // this from the Admin → Cashiers page later.
+  const cashiers = readAll(SHEETS.CASHIERS);
+  const hasDefaultCashier = cashiers.some(c => String(c.username || '').toLowerCase() === 'cashier');
+  if (!hasDefaultCashier) {
+    sheet(SHEETS.CASHIERS).appendRow(['CAS-01', 'Cashier', 'cashier', 'cashier123', 'Active', nowIso(), nowIso()]);
+  }
   clearAppCache();
 }
 
@@ -260,6 +275,20 @@ function parseDateTime(value) {
 }
 function boolYes(value) { const s = String(value || '').toLowerCase(); return s === 'yes' || s === 'true' || s === '1'; }
 function normalizePhone(phone) { return String(phone || '').replace(/\D/g, ''); }
+function actorFromPayload(p) {
+  const s = (p && p.__session) || {};
+  return {
+    cashier_id: String(s.cashier_id || ''),
+    cashier_name: String(s.cashier_name || s.username || ''),
+    shift_id: String(s.shift_id || ''),
+  };
+}
+function rowDateTimeInRange(value, start, end) {
+  const d = parseDateTime(value);
+  if (!d || !start) return false;
+  const ms = d.getTime();
+  return ms >= start.getTime() && (!end || ms <= end.getTime());
+}
 function getSettingsMap() {
   const map = {};
   cachedReadAll(SHEETS.SETTINGS, CACHE_KEYS.SETTINGS, 60).forEach(r => { map[r.setting_name] = r.setting_value; });
@@ -270,6 +299,176 @@ function getMemberDiscountPerHour(settings) {
 }
 function calcMemberDiscount(settings, durationMinutes, pcsRequired) {
   return Math.max(0, getMemberDiscountPerHour(settings) * (Number(durationMinutes || 0) / 60) * (Number(pcsRequired || 1) || 1));
+}
+
+
+// ---------- Cashiers + shifts ----------
+function getCashiers() {
+  const rows = cachedReadAll(SHEETS.CASHIERS, CACHE_KEYS.CASHIERS, 60)
+    .sort((a, b) => String(a.cashier_name || '').localeCompare(String(b.cashier_name || '')));
+  return { success: true, data: rows };
+}
+function addCashier(p) {
+  const name = String(p.cashier_name || '').trim();
+  const username = String(p.username || '').trim().toLowerCase();
+  const password = String(p.password || '').trim();
+  if (!name || !username || !password) return { success: false, error: 'Cashier name, username and password are required.' };
+  const exists = readAll(SHEETS.CASHIERS).some(c => String(c.username || '').toLowerCase() === username);
+  if (exists) return { success: false, error: 'This username already exists.' };
+  const id = nextId(SHEETS.CASHIERS, 'CAS');
+  sheet(SHEETS.CASHIERS).appendRow([id, name, username, password, p.status || 'Active', nowIso(), nowIso()]);
+  clearAppCache();
+  return { success: true, data: { cashier_id: id } };
+}
+function updateCashier(p) {
+  const found = findRow(SHEETS.CASHIERS, 'cashier_id', p.cashier_id);
+  if (!found) return { success: false, error: 'Cashier not found' };
+  const cur = rowObject(found.headers, found.values);
+  const username = String(p.username || cur.username || '').trim().toLowerCase();
+  const duplicate = readAll(SHEETS.CASHIERS).some(c => String(c.cashier_id) !== String(p.cashier_id) && String(c.username || '').toLowerCase() === username);
+  if (duplicate) return { success: false, error: 'This username already exists.' };
+  const values = [
+    cur.cashier_id,
+    String(p.cashier_name ?? cur.cashier_name ?? '').trim(),
+    username,
+    String(p.password ?? cur.password ?? '').trim(),
+    p.status || cur.status || 'Active',
+    cur.created_at || nowIso(),
+    nowIso(),
+  ];
+  sheet(SHEETS.CASHIERS).getRange(found.row, 1, 1, values.length).setValues([values]);
+  clearAppCache();
+  return { success: true };
+}
+function deleteCashier(p) {
+  const found = findRow(SHEETS.CASHIERS, 'cashier_id', p.cashier_id);
+  if (!found) return { success: false, error: 'Cashier not found' };
+  sheet(SHEETS.CASHIERS).deleteRow(found.row);
+  clearAppCache();
+  return { success: true };
+}
+function loginCashier(p) {
+  const username = String(p.username || '').trim().toLowerCase();
+  const password = String(p.password || '').trim();
+  if (!username || !password) return { success: false, error: 'Username and password are required.' };
+  const cashier = readAll(SHEETS.CASHIERS).find(c =>
+    String(c.username || '').toLowerCase() === username &&
+    String(c.password || '') === password &&
+    String(c.status || 'Active') === 'Active'
+  );
+  if (!cashier) return { success: false, error: 'Invalid cashier username or password.' };
+  const shift = getOrCreateActiveShift(cashier);
+  return {
+    success: true,
+    data: {
+      role: 'cashier',
+      username: String(cashier.username || ''),
+      cashier_id: String(cashier.cashier_id || ''),
+      cashier_name: String(cashier.cashier_name || cashier.username || ''),
+      shift_id: shift.shift_id,
+      shift_started_at: shift.clock_in_at,
+    },
+  };
+}
+function getOrCreateActiveShift(cashier) {
+  const active = readAll(SHEETS.SHIFTS).find(s =>
+    String(s.cashier_id || '') === String(cashier.cashier_id || '') &&
+    String(s.status || '') === 'Active' &&
+    !String(s.clock_out_at || '')
+  );
+  if (active) return active;
+  const id = nextId(SHEETS.SHIFTS, 'SHIFT');
+  const row = [id, cashier.cashier_id, cashier.cashier_name || cashier.username || '', nowIso(), '', 'Active', nowIso(), nowIso()];
+  sheet(SHEETS.SHIFTS).appendRow(row);
+  clearAppCache();
+  return { shift_id: id, cashier_id: cashier.cashier_id, cashier_name: cashier.cashier_name, clock_in_at: row[3], status: 'Active' };
+}
+function logoutCashier(p) {
+  const shiftId = String(p.shift_id || '').trim();
+  if (!shiftId) return { success: true };
+  return closeShift({ shift_id: shiftId });
+}
+function closeShift(p) {
+  const found = findRow(SHEETS.SHIFTS, 'shift_id', p.shift_id);
+  if (!found) return { success: false, error: 'Shift not found' };
+  const cur = rowObject(found.headers, found.values);
+  const values = [
+    cur.shift_id,
+    cur.cashier_id,
+    cur.cashier_name,
+    cur.clock_in_at,
+    cur.clock_out_at || nowIso(),
+    'Closed',
+    cur.created_at || cur.clock_in_at || nowIso(),
+    nowIso(),
+  ];
+  sheet(SHEETS.SHIFTS).getRange(found.row, 1, 1, values.length).setValues([values]);
+  clearAppCache();
+  return { success: true };
+}
+function summarizeShift(shift) {
+  const shiftId = String(shift.shift_id || '');
+  const cashierId = String(shift.cashier_id || '');
+  const start = parseDateTime(shift.clock_in_at || shift.created_at || '');
+  const end = parseDateTime(shift.clock_out_at || '') || (String(shift.status) === 'Active' ? nowDate() : null);
+  const bookings = getBookingsRaw().filter(b => {
+    if (String(b.shift_id || '') === shiftId) return true;
+    return !String(b.shift_id || '') && String(b.cashier_id || '') === cashierId && rowDateTimeInRange(b.created_at, start, end);
+  });
+  const payments = cachedReadAll(SHEETS.PAYMENTS, CACHE_KEYS.PAYMENTS, 30).filter(p => {
+    if (String(p.shift_id || '') === shiftId) return true;
+    return !String(p.shift_id || '') && String(p.cashier_id || '') === cashierId && rowDateTimeInRange(p.created_at || p.completed_at, start, end);
+  });
+  const topups = cachedReadAll(SHEETS.MEMBER_TOPUPS, CACHE_KEYS.TOPUPS, 30).filter(t => {
+    if (String(t.shift_id || '') === shiftId) return true;
+    return !String(t.shift_id || '') && String(t.cashier_id || '') === cashierId && rowDateTimeInRange(t.created_at, start, end);
+  });
+  const expenses = cachedReadAll(SHEETS.EXPENSES, CACHE_KEYS.EXPENSES, 30).filter(e => {
+    if (String(e.shift_id || '') === shiftId) return true;
+    return !String(e.shift_id || '') && String(e.cashier_id || '') === cashierId && rowDateTimeInRange(e.created_at, start, end);
+  });
+  const bookingRevenue = payments.reduce((sum, p) => sum + (Number(p.total_collected) || 0), 0);
+  const bookingCash = payments.reduce((sum, p) => sum + (Number(p.cash_collected) || 0), 0);
+  const bookingOnline = payments.reduce((sum, p) => sum + (Number(p.online_collected) || 0), 0);
+  const topupTotal = topups.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const topupCash = topups.filter(t => String(t.payment_method || 'Cash') === 'Cash').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const topupOnline = topups.filter(t => String(t.payment_method || 'Cash') !== 'Cash').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const expenseTotal = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const expenseCash = expenses.filter(e => String(e.payment_method || 'Cash') === 'Cash').reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const totalRevenue = bookingRevenue + topupTotal;
+  return {
+    shift_id: shiftId,
+    cashier_id: cashierId,
+    cashier_name: String(shift.cashier_name || ''),
+    clock_in_at: shift.clock_in_at || '',
+    clock_out_at: shift.clock_out_at || '',
+    status: shift.status || 'Active',
+    bookings_created: bookings.length,
+    completed_bookings: payments.length,
+    booking_revenue: Math.round(bookingRevenue),
+    topups_total: Math.round(topupTotal),
+    expenses_total: Math.round(expenseTotal),
+    total_revenue: Math.round(totalRevenue),
+    net_revenue: Math.round(totalRevenue - expenseTotal),
+    cash_collected: Math.round(bookingCash + topupCash),
+    online_collected: Math.round(bookingOnline + topupOnline),
+    cash_expenses: Math.round(expenseCash),
+    expected_cash: Math.round(bookingCash + topupCash - expenseCash),
+  };
+}
+function getMyShiftSummary(p) {
+  const shiftId = String(p.shift_id || (p.__session && p.__session.shift_id) || '').trim();
+  if (!shiftId) return { success: true, data: null };
+  const shift = readAll(SHEETS.SHIFTS).find(s => String(s.shift_id || '') === shiftId);
+  if (!shift) return { success: true, data: null };
+  return { success: true, data: summarizeShift(shift) };
+}
+function getShiftReports(p) {
+  const rows = readAll(SHEETS.SHIFTS)
+    .map(summarizeShift)
+    .sort((a, b) => String(b.clock_in_at || '').localeCompare(String(a.clock_in_at || '')));
+  const limit = Number(p.limit || 100) || 100;
+  return { success: true, data: rows.slice(0, limit) };
 }
 
 // ---------- Automatic booking cleanup ----------
@@ -537,12 +736,14 @@ function addBooking(p) {
   const pricePerHour = tier ? Number(tier.price_per_hour) : 0;
   const totalPrice = (pricePerHour * duration / 60) * pcsRequired;
   const id = nextId(SHEETS.BOOKINGS, 'BK');
+  const actor = actorFromPayload(p);
 
   sheet(SHEETS.BOOKINGS).appendRow([
     id, p.customer_name, p.phone_number, p.tier_id, dateStr,
     fromMinutes(startMin), fromMinutes(endMin), duration, pcsRequired,
     assigned.join(','), p.status || 'Pending', p.notes || '', totalPrice, nowIso(), nowIso(),
     '', 0, totalPrice, 0, '', 0, 0, '', '', 'No',
+    actor.cashier_id, actor.cashier_name, actor.shift_id,
   ]);
   upsertCustomer(p.customer_name, p.phone_number, true);
   clearAppCache();
@@ -604,6 +805,7 @@ function updateBooking(p) {
     merged.booking_type || '', Number(merged.discount_amount) || 0, amountDue,
     Number(merged.cash_collected) || 0, merged.online_method || '', Number(merged.online_collected) || 0,
     Number(merged.total_collected) || 0, merged.payment_status || '', merged.completed_at || '', merged.keep_permanent || 'No',
+    merged.cashier_id || cur.cashier_id || '', merged.cashier_name || cur.cashier_name || '', merged.shift_id || cur.shift_id || '',
   ];
   sheet(SHEETS.BOOKINGS).getRange(row, 1, 1, values.length).setValues([values]);
   upsertCustomer(merged.customer_name, merged.phone_number, false);
@@ -636,6 +838,7 @@ function completeBooking(p) {
   const completedAt = nowIso();
   const paymentDate = todayIso();
   const keepPermanent = p.keep_permanent ? 'Yes' : 'No';
+  const actor = actorFromPayload(p);
 
   updateBooking({
     booking_id: p.booking_id,
@@ -650,6 +853,9 @@ function completeBooking(p) {
     payment_status: paymentStatus,
     completed_at: completedAt,
     keep_permanent: keepPermanent,
+    cashier_id: actor.cashier_id || cur.cashier_id || '',
+    cashier_name: actor.cashier_name || cur.cashier_name || '',
+    shift_id: actor.shift_id || cur.shift_id || '',
   });
 
   upsertPayment({
@@ -675,6 +881,9 @@ function completeBooking(p) {
     tier_name: tierNameById(cur.tier_id),
     duration_minutes: Number(cur.duration_minutes) || 0,
     pcs_required: Number(cur.pcs_required) || 1,
+    cashier_id: actor.cashier_id || cur.cashier_id || '',
+    cashier_name: actor.cashier_name || cur.cashier_name || '',
+    shift_id: actor.shift_id || cur.shift_id || '',
   });
 
   clearAppCache();
@@ -691,6 +900,7 @@ function upsertPayment(p) {
     p.total_collected, p.payment_status, p.notes || '', createdAt, nowIso(),
     p.assigned_pc_ids || '', p.pc_names || '', p.tier_name || tierNameById(p.tier_id),
     Number(p.duration_minutes) || 0, Number(p.pcs_required) || 1,
+    p.cashier_id || '', p.cashier_name || '', p.shift_id || '',
   ];
   if (found) sheet(SHEETS.PAYMENTS).getRange(found.row, 1, 1, values.length).setValues([values]);
   else sheet(SHEETS.PAYMENTS).appendRow(values);
@@ -703,6 +913,7 @@ function addMemberTopup(p) {
   if (amount <= 0) return { success: false, error: 'Topup amount must be greater than 0.' };
   const id = nextId(SHEETS.MEMBER_TOPUPS, 'TOP');
   const date = p.topup_date || todayIso();
+  const actor = actorFromPayload(p);
   sheet(SHEETS.MEMBER_TOPUPS).appendRow([
     id,
     p.member_name || '',
@@ -713,6 +924,9 @@ function addMemberTopup(p) {
     p.notes || '',
     nowIso(),
     nowIso(),
+    actor.cashier_id,
+    actor.cashier_name,
+    actor.shift_id,
   ]);
   upsertCustomer(p.member_name, p.phone_number, false);
   clearAppCache();
@@ -732,6 +946,7 @@ function addExpense(p) {
   const amount = Number(p.amount) || 0;
   if (amount <= 0) return { success: false, error: 'Expense amount must be greater than 0.' };
   const id = nextId(SHEETS.EXPENSES, 'EXP');
+  const actor = actorFromPayload(p);
   sheet(SHEETS.EXPENSES).appendRow([
     id,
     p.expense_date || todayIso(),
@@ -740,6 +955,10 @@ function addExpense(p) {
     p.notes || '',
     nowIso(),
     nowIso(),
+    p.payment_method || 'Cash',
+    actor.cashier_id,
+    actor.cashier_name,
+    actor.shift_id,
   ]);
   clearAppCache();
   return { success: true, data: { expense_id: id } };
@@ -1084,6 +1303,7 @@ const ACTIONS = {
   getPCs, addPC, updatePC, deletePC,
   getTiers, addTier, updateTier, deleteTier,
   getCustomers,
+  getCashiers, addCashier, updateCashier, deleteCashier, loginCashier, logoutCashier, closeShift, getMyShiftSummary, getShiftReports,
   getBookings, addBooking, updateBooking, cancelBooking, deleteBooking, completeBooking,
   checkAvailability,
   getDashboardSummary, getDashboardData, getBookingsPageData,

@@ -2,6 +2,8 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { unlockSite } from "@/lib/gate.functions";
+import { getAppsScriptUrl } from "@/lib/api";
+import { setPublicSessionMeta } from "@/lib/session-meta";
 import { Gamepad2 } from "lucide-react";
 
 export const Route = createFileRoute("/unlock")({
@@ -24,13 +26,16 @@ function Unlock() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const password = new FormData(e.currentTarget).get("password") as string;
+    const form = new FormData(e.currentTarget);
+    const username = String(form.get("username") || "").trim();
+    const password = String(form.get("password") || "");
     try {
-      const { ok } = await unlock({ data: { password } });
-      if (ok) {
+      const result = await unlock({ data: { username, password, appsScriptUrl: getAppsScriptUrl() } });
+      if (result.ok) {
+        setPublicSessionMeta(result as any);
         await router.navigate({ to: "/admin" });
         router.invalidate();
-      } else setError("Incorrect password");
+      } else setError("Incorrect username or password");
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
     } finally {
@@ -48,17 +53,30 @@ function Unlock() {
           <h1 className="text-2xl font-bold neon-text">Panda Gaming Zone</h1>
           <p className="text-sm text-muted-foreground">Admin / cashier dashboard access</p>
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Password</label>
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            autoFocus
-            required
-            className="w-full rounded-md bg-input border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Username</label>
+            <input
+              name="username"
+              type="text"
+              autoComplete="username"
+              autoFocus
+              placeholder="admin or cashier username"
+              className="w-full rounded-md bg-input border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">Admin can type admin or leave username empty.</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Password</label>
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              className="w-full rounded-md bg-input border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </div>
         </div>
         <button
           type="submit"
